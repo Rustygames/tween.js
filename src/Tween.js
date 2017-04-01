@@ -81,8 +81,8 @@ if (typeof (window) === 'undefined' && typeof (process) !== 'undefined') {
 }
 // In a browser, use window.performance.now if it is available.
 else if (typeof (window) !== 'undefined' &&
-         window.performance !== undefined &&
-		 window.performance.now !== undefined) {
+	window.performance !== undefined &&
+	window.performance.now !== undefined) {
 	// This must be bound, because directly assigning this function
 	// leads to an invocation exception in Chrome.
 	TWEEN.now = window.performance.now.bind(window.performance);
@@ -104,6 +104,7 @@ TWEEN.Tween = function (object) {
 	var _object = object;
 	var _valuesStart = {};
 	var _valuesEnd = {};
+	var _valuesEndRepeat = {};
 	var _valuesStartRepeat = {};
 	var _duration = 1000;
 	var _repeat = 0;
@@ -111,11 +112,12 @@ TWEEN.Tween = function (object) {
 	var _yoyo = false;
 	var _isPlaying = false;
 	var _reversed = false;
-	var _delayTime = 0;
 	var _startTime = null;
 	var _easingFunction = TWEEN.Easing.Linear.None;
 	var _interpolationFunction = TWEEN.Interpolation.Linear;
 	var _chainedTweens = [];
+	var _chainedTos = [];
+	var _repeatChainedTos = null;
 	var _onStartCallback = null;
 	var _onStartCallbackFired = false;
 	var _onUpdateCallback = null;
@@ -124,7 +126,12 @@ TWEEN.Tween = function (object) {
 
 	this.to = function (properties, duration) {
 
-		_valuesEnd = properties;
+		if (_valuesEnd) {
+			_chainedTos.push({ valuesEnd: properties, duration: duration });
+			return this;
+		}
+
+		_valuesEnd = _valuesEndRepeat = properties;
 
 		if (duration !== undefined) {
 			_duration = duration;
@@ -136,14 +143,16 @@ TWEEN.Tween = function (object) {
 
 	this.start = function (time) {
 
-		TWEEN.add(this);
+		if (!_isPlaying) {
+			_repeatChainedTos = _chainedTos.concat();
+			TWEEN.add(this);
+		}
 
 		_isPlaying = true;
 
 		_onStartCallbackFired = false;
 
 		_startTime = time !== undefined ? time : TWEEN.now();
-		_startTime += _delayTime;
 
 		for (var property in _valuesEnd) {
 
@@ -215,7 +224,7 @@ TWEEN.Tween = function (object) {
 
 	this.delay = function (amount) {
 
-		_delayTime = amount;
+		_chainedTos.push({ valuesEnd: {}, duration: amount });
 		return this;
 
 	};
@@ -356,6 +365,15 @@ TWEEN.Tween = function (object) {
 
 		if (elapsed === 1) {
 
+			if (_chainedTos.length) {
+				_duration = _chainedTos[0].duration;
+				_valuesEnd = _chainedTos[0].valuesEnd;
+
+				_chainedTos.shift();
+				this.start(time);
+				return this;
+			}
+
 			if (_repeat > 0) {
 
 				if (isFinite(_repeat)) {
@@ -363,6 +381,9 @@ TWEEN.Tween = function (object) {
 				}
 
 				// Reassign starting values, restart by making startTime = now
+				_valuesEnd = _valuesEndRepeat;
+				_chainedTos = _repeatChainedTos.concat();
+
 				for (property in _valuesStartRepeat) {
 
 					if (typeof (_valuesEnd[property]) === 'string') {
@@ -387,7 +408,7 @@ TWEEN.Tween = function (object) {
 				if (_repeatDelayTime !== undefined) {
 					_startTime = time + _repeatDelayTime;
 				} else {
-					_startTime = time + _delayTime;
+					_startTime = time;
 				}
 
 				return true;
